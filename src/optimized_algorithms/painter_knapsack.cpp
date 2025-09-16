@@ -18,8 +18,8 @@ SFCProcessorMapDoItCombinedPainter (const amrex::BoxArray&          boxes,
                      const std::vector<amrex::Long>& wgts,
                      int                             nnodes,
                      int                             ranks_per_node,
-                     amrex::Real*                    sfc_eff,
-                     amrex::Real*                    knapsack_eff,
+                     amrex::Real                    &sfc_eff,
+                     amrex::Real                    &knapsack_eff,
                      bool                            flag_verbose_mapper,
                      bool                            sort,
                      const std::vector<amrex::Long>& bytes)
@@ -83,7 +83,7 @@ SFCProcessorMapDoItCombinedPainter (const amrex::BoxArray&          boxes,
     std::vector<int> p_result; 
     //Distribute(tokens, wgts, nteams, volperteam, vec, flag_verbose_mapper); //// calling SFC 1
 //    vec2=painterPartition_VecVec(boxes,wgts,nteams);
-     p_result=painterPartition(boxes,wgts,nteams);
+     p_result=painterPartition(boxes,wgts,nteams, sfc_eff);
      
      for (int i = 0; i < p_result.size(); ++i)
     {
@@ -188,7 +188,7 @@ SFCProcessorMapDoItCombinedPainter (const amrex::BoxArray&          boxes,
         if (W > max_wgt_sfc) max_wgt_sfc = W;
         sum_wgt_sfc += W;
     }
-    *sfc_eff = (sum_wgt_sfc / (nteams * max_wgt_sfc)); /// SFC eff
+    sfc_eff = (sum_wgt_sfc / (nteams * max_wgt_sfc)); /// SFC eff
 
     amrex::Real total_weight_knapsack = 0;
     amrex::Real max_weight_knapsack_across_ranks = 0;
@@ -236,7 +236,7 @@ SFCProcessorMapDoItCombinedPainter (const amrex::BoxArray&          boxes,
         // lowercase knapsack is just like distribute in SFC
 
         knapsack(local_wgts, ranks_per_node, knapsack_result, knapsack_local_efficiency, true, N);
-        amrex::Print() << "Node " << i << " Each Knapsack efficiency: " << knapsack_local_efficiency << "\n";        
+        // amrex::Print() << "Node " << i << " Each Knapsack efficiency: " << knapsack_local_efficiency << "\n";
 
         
 
@@ -300,6 +300,7 @@ SFCProcessorMapDoItCombinedPainter (const amrex::BoxArray&          boxes,
 
         for (int j = 0; j < knapsack_result.size(); ++j) {
             amrex::Real local_knapsack_wgt = 0;
+            int global_rank = (tid * ranks_per_node) + j;
             for (int k = 0; k < knapsack_result[j].size(); ++k) {
 
                 /// Here, the global index is obtained using local_indices.
@@ -309,7 +310,6 @@ SFCProcessorMapDoItCombinedPainter (const amrex::BoxArray&          boxes,
                 // result[global_idx] = j + (tid * ranks_per_node); //// Map local rank (0-3) to global rank
                 // Calculate local weight for each rank
                 local_knapsack_wgt += wgts[global_idx];
-                int global_rank = (tid * ranks_per_node) + j;
                 result[global_idx] = global_rank;
             //     amrex::Print() << "Global Index: " << global_idx << ", Local Rank: " << j
             //    << ", Global Rank: " << global_rank << "\n";
@@ -321,7 +321,13 @@ SFCProcessorMapDoItCombinedPainter (const amrex::BoxArray&          boxes,
             max_weight_knapsack_across_ranks = local_knapsack_wgt;
             }
             total_weight_knapsack += local_knapsack_wgt;
-            
+
+            // Add the weight to metrics_utils
+            fprintf(stderr, "%s, %s, %0.10f, %d\n", 
+                algorithms[MetricUtilsAlgorithms::PAINTER_KNAPSACK],
+                metrics[MetricUtilsMetrics::WEIGHT],
+                local_knapsack_wgt, global_rank);
+
         }
 
         //Print local results after each node's knapsack run
@@ -353,7 +359,7 @@ SFCProcessorMapDoItCombinedPainter (const amrex::BoxArray&          boxes,
         assert(result[i] != -1);  
     }
 
-    *knapsack_eff = total_weight_knapsack / (ranks_per_node * nteams * max_weight_knapsack_across_ranks);
+    knapsack_eff = total_weight_knapsack / (ranks_per_node * nteams * max_weight_knapsack_across_ranks);
 
 
      
@@ -384,9 +390,13 @@ SFCProcessorMapDoItCombinedPainter (const amrex::BoxArray&          boxes,
 
 
     if (flag_verbose_mapper) {
-        amrex::Print() << "SFC[painter] efficiency for combined algorithm: " << *sfc_eff << '\n';
-        amrex::Print() << "Painter+Knapsack combined efficiency: " << *knapsack_eff << '\n';
+        amrex::Print() << "SFC[painter] efficiency for combined algorithm: " << sfc_eff << '\n';
+        amrex::Print() << "Painter+Knapsack combined efficiency: " << knapsack_eff << '\n';
     }
+    fprintf(stderr, "%s, %s, %0.10f\n", 
+        algorithms[MetricUtilsAlgorithms::PAINTER_KNAPSACK],
+        metrics[MetricUtilsMetrics::EFFICIENCY],
+        knapsack_eff);
 
 
 

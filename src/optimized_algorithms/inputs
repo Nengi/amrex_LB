@@ -20,6 +20,7 @@ nruns = 10
 
 tiny_profiler.print_threshold = 0
 
+debug=True
 
 amrex.v = 1
 #DistributionMapping.verbose_mapper=1

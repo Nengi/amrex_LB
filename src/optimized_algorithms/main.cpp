@@ -19,6 +19,9 @@
 #include "SFC.H"
 #include "SFC_knapsack.H"
 #include "painterPartition.H"
+#include "KK.h"
+#include "metric_utils.h"
+
 
 
 #if defined(AMREX_USE_MPI) || defined(AMREX_USE_GPU)
@@ -47,6 +50,7 @@ void main_main() {
     int nbins, nnodes, ranks_per_node;
     Real mean, stdev;
     int nruns = 1;
+    bool debug = false;
     IntVect d_size, mgs, nghost, piv;
     {
         ParmParse pp;
@@ -63,6 +67,7 @@ void main_main() {
         pp.query("nruns",nruns);
         pp.query("name", name);
         pp.query("scaling", scaling);
+        pp.query("debug", debug);
     }
     amrex::Print() << "Mean: " << mean << std::endl;
     amrex::Print() << "Stdev: " << stdev << std::endl;
@@ -100,53 +105,79 @@ void main_main() {
 
     // // Real stdev = 250; //for the best case
 
-for (int r = 0; r<nruns; r++) {
+for (int r = 1; r<=nruns; r++) {
 
-    amrex::Print() << "\n=== Starting Run " << r + 1 << " ===\n";
+    amrex::Print() << "\n=== Starting Run " << r << " ===\n";
 
     amrex::ResetRandomSeed(rand());
 
 
     for (int i = 0; i < nitems; ++i) {
         wgts[i] = amrex::RandomNormal(mean, stdev);
-        amrex::Print()<<wgts[i]<<" , ";
+        // amrex::Print()<<wgts[i]<<" , ";
     }
+    // amrex::Print() << std::endl;
     std::vector<Long> scaled_wgts = scale_wgts(wgts);
+
+
+    // Randomly change a random number weights to simulate different scenarios
+    amrex::ResetRandomSeed(rand());
+    int num_changes = amrex::Random_int(nitems / 2) + 1; // Ensure at least one change
+    amrex::Print() << "Number of changes: " << num_changes << std::endl;
+    for (int i = 0; i < num_changes; ++i) {
+        int idx = amrex::Random_int(nitems - 1);
+        scaled_wgts[idx] = amrex::RandomNormal(mean, stdev);
+    }
+
     amrex::Print()<<" Scaled Weights: ";
       for (int i=0; i<nitems; ++i) {
         
         amrex::Print()<<scaled_wgts[i]<<" , ";
        
     }
+    amrex::Print() << std::endl;
 
     amrex::Real sfc_eff = 0.0, knapsack_eff = 0.0;
     int node_size = 0;
     double time_start=0;
 
-    time_start = amrex::second();
-    std::vector<int> k_dmap = KnapSackDoIt(scaled_wgts, nranks, k_eff, true, nmax, true, false, bytes);
-    amrex::Print()<<" Final Knapsack time: " << amrex::second() - time_start << std::endl<<std::endl;
+    // time_start = amrex::second();
+    // std::vector<int> k_dmap = KnapSackDoIt(scaled_wgts, nranks, k_eff, true, nmax, debug, false, r, bytes);
+    // amrex::Print()<<" Final Knapsack time: " << amrex::second() - time_start << std::endl<<std::endl;
+    // metric_utils_add(MetricUtilsAlgorithms::KNAPSACK, MetricUtilsMetrics::TIME, amrex::second() - time_start, r);
 
     time_start = amrex::second();
-    std::vector<int> s_dmap = SFCProcessorMapDoIt(ba, scaled_wgts, nranks, &s_eff, node_size, true, false, bytes);
-    amrex::Print()<<" Final SFC time: " << amrex::second() - time_start << std::endl<<std::endl;
+    std::vector<int> kk_dmap = KKDoIt(scaled_wgts, nranks, k_eff, false, debug, r, bytes);
+    amrex::Print()<<" Final Karmarkar-Karp time: " << amrex::second() - time_start << std::endl<<std::endl;
+    // metric_utils_add(MetricUtilsAlgorithms::KARMARKAR_KARP, MetricUtilsMetrics::TIME, amrex::second() - time_start, r);
 
-    time_start = amrex::second();
-    std::vector<int> vec=painterPartition(ba,scaled_wgts,nranks);
-    amrex::Print()<<" Final SFC+Painter time: " << amrex::second() - time_start << std::endl<<std::endl;
+    // time_start = amrex::second();
+    // std::vector<int> s_dmap = SFCProcessorMapDoIt(ba, scaled_wgts, nranks, &s_eff, node_size, false, false, r, bytes);
+    // amrex::Print()<<" Final SFC time: " << amrex::second() - time_start << std::endl<<std::endl;
+    // metric_utils_add(MetricUtilsAlgorithms::SFC, MetricUtilsMetrics::TIME, amrex::second() - time_start, r);
 
-    time_start = amrex::second();
-    std::vector<int> sfc_knapsack_dmap = SFCProcessorMapDoItCombined(ba, scaled_wgts, nnodes, ranks_per_node, &sfc_eff, &knapsack_eff, true, false, bytes);
-    amrex::Print()<<" Final SFC+Knapsack_Combined time: " << amrex::second() - time_start << std::endl<<std::endl;
-    
-    time_start = amrex::second();
-    std::vector<int> painter_knapsack_dmap = SFCProcessorMapDoItCombinedPainter(ba, scaled_wgts, nnodes, ranks_per_node, &sfc_eff, &knapsack_eff, true, false, bytes);
-    amrex::Print()<<" Final painter+Knapsack_Combined time: " << amrex::second() - time_start << std::endl;
+    // time_start = amrex::second();
+    // std::vector<int> vec=painterPartition(ba,scaled_wgts,nranks, r);
+    // amrex::Print()<<" Final SFC+Painter time: " << amrex::second() - time_start << std::endl<<std::endl;
+    // metric_utils_add(MetricUtilsAlgorithms::SFC_PAINTER, MetricUtilsMetrics::TIME, amrex::second() - time_start, r);
 
-    amrex::Print() << "\n=== End of Run " << r + 1 << " ===\n";
+    // time_start = amrex::second();
+    // std::vector<int> sfc_knapsack_dmap = SFCProcessorMapDoItCombined(ba, scaled_wgts, nnodes, ranks_per_node, &sfc_eff, &knapsack_eff, false, false, r, bytes);
+    // amrex::Print()<<" Final SFC+Knapsack_Combined time: " << amrex::second() - time_start << std::endl<<std::endl;
+    // metric_utils_add(MetricUtilsAlgorithms::SFC_KNAPSACK, MetricUtilsMetrics::TIME, amrex::second() - time_start, r);
+
+    // time_start = amrex::second();
+    // std::vector<int> painter_knapsack_dmap = SFCProcessorMapDoItCombinedPainter(ba, scaled_wgts, nnodes, ranks_per_node, &sfc_eff, &knapsack_eff, false, false, r, bytes);
+    // amrex::Print()<<" Final painter+Knapsack_Combined time: " << amrex::second() - time_start << std::endl;
+    // metric_utils_add(MetricUtilsAlgorithms::PAINTER_KNAPSACK, MetricUtilsMetrics::TIME, amrex::second() - time_start, r);
+
+    amrex::Print() << "\n=== End of Run " << r << " ===\n";
     amrex::Print() << "======================================\n\n";
 
 }
+
+// metric_utils_dump();
+
 
     // Print SFC and Knapsack efficiencies
     // amrex::Print() << "SFC Efficiency: " << sfc_eff << std::endl;

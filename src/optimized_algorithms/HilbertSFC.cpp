@@ -489,9 +489,20 @@ HilbertProcessorMapDoIt(const amrex::BoxArray& boxes,
             const amrex::Long W = LIpairV[i].first;
             if (W > max_wgt) max_wgt = W;
             sum_wgt += W;
+
+            // Print the weight distribution per rank
+            fprintf(stderr, "%s, %s, %0.10f, %d\n", 
+                algorithms[MetricUtilsAlgorithms::HILBERT_SFC],
+                metrics[MetricUtilsMetrics::WEIGHT],
+                W, i);
         }
         amrex::Real efficiency = (sum_wgt / (nteams * max_wgt));
         if (eff) *eff = efficiency;
+
+        fprintf(stderr, "%s, %s, %0.10f\n", 
+                algorithms[MetricUtilsAlgorithms::HILBERT_SFC],
+                metrics[MetricUtilsMetrics::EFFICIENCY],
+                efficiency);
 
         if (flag_verbose_mapper) {
             amrex::Print() << "Hilbert SFC efficiency: " << efficiency << '\n';
